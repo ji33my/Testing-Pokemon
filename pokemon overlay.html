@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PokéMMO Stream Overlay</title>
+<style>
+body {
+  margin: 0;
+  background: #c81d25;
+  font-family: Arial, Helvetica, sans-serif;
+  color: white;
+}
+
+#container {
+  width: 100%;
+  height: 100vh;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+#header {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+#timer {
+  font-size: 64px;
+  font-weight: bold;
+  text-shadow: 2px 2px 6px black;
+}
+
+#last {
+  font-size: 18px;
+  margin-top: 4px;
+}
+
+#list {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.entry {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.25);
+  gap: 8px;
+  font-size: 16px;
+}
+
+.highlight {
+  outline: 2px solid gold;
+  background: rgba(255,215,0,0.2);
+}
+
+.tierA { border-left: 6px solid gold; }
+.tierB { border-left: 6px solid #4da3ff; }
+.tierC { border-left: 6px solid #bbbbbb; }
+
+.tierLabel {
+  margin-left: auto;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<div id="container">
+  <div id="header">
+    <div id="timer">Waiting for API…</div>
+    <div id="last">Last Pokémon: --</div>
+  </div>
+  <div id="list"></div>
+</div>
+
+<script>
+const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
+let nextSpawn = null;
+let lastSeen = "";
+const recent = [];
+
+// Hard fallback: assume 15 minutes from page load
+let fallbackNextSpawn = new Date(Date.now() + 15 * 60 * 1000);
+
+async function fetchData() {
+  try {
+    const res = await fetch(API_URL + "&_=" + Date.now(), { cache: "no-store" });
+    const text = await res.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.log("API returned non-JSON:", text);
+      return;
+    }
+
+    const pokemon =
+      data?.pokemon?.name ||
+      data?.pokemon ||
+      data?.last_spawn?.pokemon ||
+      "Unknown";
+
+    const time =
+      data?.time ||
+      data?.timestamp ||
+      data?.last_spawn?.time ||
+      Date.now();
+
+    nextSpawn = new Date(time + 15 * 60 * 1000);
+    fallbackNextSpawn = nextSpawn;
+
+    if (pokemon !== lastSeen) {
+      lastSeen = pokemon;
+      updateList(pokemon);
+    }
+
+    document.getElementById("last").innerText = "Last Pokémon: " + pokemon;
+
+  } catch (err) {
+    console.log("API fetch failed, using fallback timer.", err);
+    nextSpawn = fallbackNextSpawn;
+  }
+}
+
+function updateList(name) {
+  recent.unshift(name);
+  if (recent.length > 6) recent.pop();
+
+  const list = document.getElementById("list");
+  list.innerHTML = recent.map((p, i) => {
+    return `
+      <div class="entry ${i === 0 ? 'highlight' : ''}">
+        ${p}
+        <div class="tierLabel">Tier C</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function updateTimer() {
+  const target = nextSpawn || fallbackNextSpawn;
+  const diff = target - new Date();
+
+  if (diff <= 0) {
+    document.getElementById("timer").innerText = "Spawning!";
+    return;
+  }
+
+  const m = String(Math.floor(diff / 60000)).padStart(2, "0");
+  const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+
+  document.getElementById("timer").innerText = `${m}:${s}`;
+}
+
+fetchData();
+setInterval(fetchData, 30000);
+setInterval(updateTimer, 1000);
+</script>
+
+</body>
+</html>
