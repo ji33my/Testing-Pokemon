@@ -10,36 +10,57 @@
     font-family: Arial, sans-serif;
     text-align: center;
     font-size: 48px;
+    -webkit-text-stroke: 2px black; /* black outline for timer */
   }
   #label {
     font-size: 24px;
     margin-top: 10px;
+    -webkit-text-stroke: 1px black; /* outline for label */
   }
 </style>
 </head>
 <body>
-<div id="timer">00:00:00</div>
+<div id="timer">--:--:--</div>
 <div id="label">Time until next Pokémon</div>
 
 <script>
 const apiUrl = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
 let nextSpawn = null;
 
+// Base fallback time: 12:04:11 AM EST today
+function getFallbackNextSpawn() {
+    const now = new Date();
+    // Set base time in EST
+    const baseTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+    baseTime.setHours(0, 4, 11, 0); // 12:04:11 AM
+
+    // Calculate next spawn after base time in 15 min + 3 sec increments
+    const interval = 15 * 60 * 1000 + 3000; // 15 minutes + 3 seconds in ms
+    const elapsed = now - baseTime;
+    const intervalsPassed = Math.ceil(elapsed / interval);
+    return new Date(baseTime.getTime() + intervalsPassed * interval);
+}
+
+// Fetch last spawn from API or fallback
 async function fetchNextSpawn() {
     try {
         const response = await fetch(apiUrl);
         const data = await response.json();
-        
-        // last_spawn_time should be in ISO format
+
+        if(!data.last_spawn_time) throw new Error("No last spawn time from API");
+
         const lastSpawn = new Date(data.last_spawn_time);
-        nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000); // next spawn 5 minutes later
+        if(isNaN(lastSpawn.getTime())) throw new Error("Invalid date format from API");
+
+        // Next spawn 5 minutes after last spawn
+        nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000);
     } catch (err) {
-        console.error("Error fetching API:", err);
-        // If API fails, retry in 10 seconds
-        setTimeout(fetchNextSpawn, 10000);
+        console.warn("API failed, using fallback:", err);
+        nextSpawn = getFallbackNextSpawn();
     }
 }
 
+// Update timer every second
 function updateTimer() {
     if(!nextSpawn) return;
 
@@ -47,7 +68,7 @@ function updateTimer() {
     let diff = nextSpawn - now;
 
     if(diff <= 0) {
-        // Time's up, fetch new spawn
+        // Time's up, calculate next spawn using fallback if API fails
         fetchNextSpawn();
         diff = 0;
     }
@@ -59,7 +80,7 @@ function updateTimer() {
     document.getElementById("timer").textContent = `${hours}:${minutes}:${seconds}`;
 }
 
-// Start everything
+// Initialize
 (async function() {
     await fetchNextSpawn();
     setInterval(updateTimer, 1000);
