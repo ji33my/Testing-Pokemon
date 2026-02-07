@@ -27,11 +27,11 @@
 const apiUrl = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
 let nextSpawn = null;
 
-// Base fallback time: 12:04:11 AM EST today
+// Base fallback time: 12:04:57 AM EST today
 function getFallbackNextSpawn() {
     const now = new Date();
     const baseTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
-    baseTime.setHours(0, 4, 11, 0); // 12:04:11 AM
+    baseTime.setHours(0, 4, 57, 0); // 12:04:57 AM
 
     const interval = 15 * 60 * 1000 + 3000; // 15 minutes + 3 seconds
     const elapsed = now - baseTime;
