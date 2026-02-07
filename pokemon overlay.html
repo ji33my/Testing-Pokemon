@@ -15,22 +15,22 @@
 
   #timer {
     font-size: 96px;
-    font-weight: 900;
+    font-weight: bold;
     color: #cc0000; /* Pokémon red */
-    -webkit-text-stroke: 4px white;
+    -webkit-text-stroke: 2px white;
     text-shadow:
-      -2px -2px 0 #fff,
-       2px -2px 0 #fff,
-      -2px  2px 0 #fff,
-       2px  2px 0 #fff;
+      -1px -1px 0 #fff,
+       1px -1px 0 #fff,
+      -1px  1px 0 #fff,
+       1px  1px 0 #fff;
     line-height: 1;
   }
 
   #label1, #label2 {
     font-size: 36px;
-    font-weight: 900;
+    font-weight: bold;
     color: #cc0000;
-    -webkit-text-stroke: 2px white;
+    -webkit-text-stroke: 1px white;
     text-shadow:
       -1px -1px 0 #fff,
        1px -1px 0 #fff,
@@ -49,12 +49,12 @@
 <script>
 const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
 
-// 15 minutes 3 seconds
-const INTERVAL_MS = (15 * 60 + 3) * 1000;
+// 15 minutes flat
+const INTERVAL_MS = 15 * 60 * 1000;
 
-// Base fallback: 12:04:57 AM EST (convert to UTC)
+// Base fallback: pick a real anchor if API never works
 const BASE_UTC = Date.UTC(2026, 1, 7, 5, 4, 57); 
-// NOTE: Feb = month 1 (0-based), 12:04:57 AM EST = 05:04:57 UTC
+// Feb = 1 (0-based), 12:04:57 AM EST = 05:04:57 UTC
 
 let nextSpawnTime = null;
 
@@ -73,7 +73,7 @@ function saveCache() {
   }
 }
 
-// Fallback chain generator
+// Generate next spawn from base if needed
 function generateFromBase(now) {
   let t = BASE_UTC;
   while (t <= now) {
@@ -82,7 +82,7 @@ function generateFromBase(now) {
   return t;
 }
 
-// Pull API
+// Fetch API
 async function fetchFromAPI() {
   try {
     const res = await fetch(API_URL, { cache: "no-store" });
@@ -95,7 +95,9 @@ async function fetchFromAPI() {
       saveCache();
       return true;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn("API fetch failed:", e);
+  }
   return false;
 }
 
@@ -110,14 +112,14 @@ function formatMMSS(ms) {
 async function ensureNextSpawn() {
   const now = Date.now();
 
-  // Try API
+  // Try API first
   const apiOk = await fetchFromAPI();
   if (apiOk) return;
 
-  // Use cache
+  // Use cache if valid
   if (nextSpawnTime && nextSpawnTime > now) return;
 
-  // Advance cache if expired
+  // Advance stale cache
   if (nextSpawnTime && nextSpawnTime <= now) {
     while (nextSpawnTime <= now) {
       nextSpawnTime += INTERVAL_MS;
@@ -126,7 +128,7 @@ async function ensureNextSpawn() {
     return;
   }
 
-  // Final fallback: base
+  // Fallback to base
   nextSpawnTime = generateFromBase(now);
   saveCache();
 }
@@ -142,6 +144,7 @@ async function tick() {
   document.getElementById("timer").textContent = formatMMSS(remaining);
 }
 
+// Init
 loadCache();
 ensureNextSpawn();
 setInterval(tick, 1000);
