@@ -35,6 +35,11 @@
     font-size: 14px;
     opacity: 0.7;
   }
+  #lastPokemon {
+    margin-top: 4px;
+    font-size: 16px;
+    opacity: 0.8;
+  }
 </style>
 </head>
 <body>
@@ -42,6 +47,7 @@
     <div id="timer">--:--</div>
     <div id="label">Time until next Pokémon</div>
     <div id="status">Using seeded base time (12:04:11)</div>
+    <div id="lastPokemon">Last Pokémon: --</div>
   </div>
 
 <script>
@@ -54,14 +60,16 @@ function getSeededLastSpawn() {
   const seeded = new Date(now);
   seeded.setHours(12, 4, 11, 0); // 12:04:11 today
 
-  // If that time is in the future (e.g., after midnight), subtract a day
   if (seeded.getTime() > now.getTime()) {
     seeded.setDate(seeded.getDate() - 1);
   }
   return seeded.getTime();
 }
 
-let nextSpawnAt = getSeededLastSpawn() + SPAWN_INTERVAL_MS;
+// 🔒 Default last Pokémon
+let lastPokemon = "--";
+
+let nextSpawnAt = getSeededLastSpawn();
 
 async function sync() {
   try {
@@ -69,24 +77,29 @@ async function sync() {
     if (!res.ok) throw new Error("HTTP " + res.status);
 
     const data = await res.json();
+    console.log("API data:", data);
 
-    let raw =
-      data?.last_spawn?.time ??
-      data?.time ??
-      data?.timestamp ??
-      data?.last_spawn?.timestamp;
+    // Try multiple possible fields
+    let rawTime = data?.last_spawn?.timestamp || data?.last_spawn?.time || data?.time || data?.timestamp;
+    let pokemonName = data?.last_spawn?.pokemon || "--";
 
-    if (!raw) throw new Error("No time field");
+    if (!rawTime) throw new Error("No time field in API response");
 
-    let ms = raw;
-    if (typeof raw === "number" && raw < 1e12) ms = raw * 1000;
-    else ms = new Date(raw).getTime();
+    // Convert seconds to ms if needed
+    let ms;
+    if (typeof rawTime === "number" && rawTime < 1e12) ms = rawTime * 1000;
+    else ms = new Date(rawTime).getTime();
 
     nextSpawnAt = ms + SPAWN_INTERVAL_MS;
+    lastPokemon = pokemonName;
+
     document.getElementById("status").innerText = "Synced with PCG";
+    document.getElementById("lastPokemon").innerText = "Last Pokémon: " + lastPokemon;
 
   } catch (e) {
+    console.warn(e);
     document.getElementById("status").innerText = "PCG API offline – using seeded timer (12:04:11)";
+    document.getElementById("lastPokemon").innerText = "Last Pokémon: " + lastPokemon;
   }
 }
 
@@ -103,9 +116,10 @@ function tick() {
   document.getElementById("timer").innerText = `${m}:${s}`;
 }
 
+// Initial sync + intervals
 sync();
-setInterval(sync, 30000);
-setInterval(tick, 1000);
+setInterval(sync, 30000); // sync every 30s
+setInterval(tick, 1000);   // update timer every 1s
 </script>
 </body>
 </html>
