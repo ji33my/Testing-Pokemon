@@ -35,7 +35,6 @@
 <script>
 const apiUrl = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
 let nextSpawn = null;
-let cachedNextSpawn = null;
 
 // Fallback base: 12:04:57 AM EST + (15 min 3 sec intervals)
 function getFallbackNextSpawn() {
@@ -50,6 +49,27 @@ function getFallbackNextSpawn() {
     return new Date(baseTime.getTime() + intervalsPassed * interval);
 }
 
+function saveCache(date) {
+    try {
+        localStorage.setItem("cachedNextSpawn", date.toISOString());
+    } catch (e) {
+        console.warn("localStorage save failed:", e);
+    }
+}
+
+function loadCache() {
+    try {
+        const saved = localStorage.getItem("cachedNextSpawn");
+        if (saved) {
+            const d = new Date(saved);
+            if (!isNaN(d.getTime())) return d;
+        }
+    } catch (e) {
+        console.warn("localStorage load failed:", e);
+    }
+    return null;
+}
+
 // Fetch next spawn from API, cache result
 async function fetchNextSpawn() {
     try {
@@ -61,20 +81,20 @@ async function fetchNextSpawn() {
         const lastSpawn = new Date(data.last_spawn_time);
         if (isNaN(lastSpawn.getTime())) throw new Error("Invalid date");
 
-        nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000); // API-based next spawn
-        cachedNextSpawn = new Date(nextSpawn); // cache good value
+        nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000);
+        saveCache(nextSpawn);
 
     } catch (err) {
         console.warn("API failed:", err);
 
-        if (cachedNextSpawn) {
-            // Use last known good value + normal interval
-            nextSpawn = new Date(cachedNextSpawn.getTime() + (15 * 60 * 1000 + 3000));
-            cachedNextSpawn = new Date(nextSpawn);
+        const cached = loadCache();
+        if (cached) {
+            // move forward by interval to avoid sticking in the past
+            nextSpawn = new Date(cached.getTime() + (15 * 60 * 1000 + 3000));
+            saveCache(nextSpawn);
         } else {
-            // No cache yet → fallback base schedule
             nextSpawn = getFallbackNextSpawn();
-            cachedNextSpawn = new Date(nextSpawn);
+            saveCache(nextSpawn);
         }
     }
 }
@@ -99,7 +119,13 @@ function updateTimer() {
 
 // Init
 (async function () {
-    await fetchNextSpawn();
+    const cached = loadCache();
+    if (cached) nextSpawn = cached;
+
+    if (!nextSpawn) {
+        await fetchNextSpawn();
+    }
+
     setInterval(updateTimer, 1000);
 })();
 </script>
