@@ -52,24 +52,31 @@
 
 <script>
 const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
-const SPAWN_INTERVAL_MS = 15 * 60 * 1000;
+const SPAWN_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 // 🔒 Seeded last spawn time (LOCAL TIME)
 function getSeededLastSpawn() {
   const now = new Date();
   const seeded = new Date(now);
   seeded.setHours(12, 4, 11, 0); // 12:04:11 today
-
   if (seeded.getTime() > now.getTime()) {
     seeded.setDate(seeded.getDate() - 1);
   }
   return seeded.getTime();
 }
 
-// 🔒 Default last Pokémon
-let lastPokemon = "--";
+// Calculate next spawn in the future from seeded time
+function getNextSpawnFromSeeded() {
+  let next = getSeededLastSpawn() + SPAWN_INTERVAL_MS;
+  const now = Date.now();
+  while (next <= now) {
+    next += SPAWN_INTERVAL_MS;
+  }
+  return next;
+}
 
-let nextSpawnAt = getSeededLastSpawn();
+let nextSpawnAt = getNextSpawnFromSeeded();
+let lastPokemon = "--";
 
 async function sync() {
   try {
@@ -79,20 +86,23 @@ async function sync() {
     const data = await res.json();
     console.log("API data:", data);
 
-    // Try multiple possible fields
+    // Robust timestamp parsing
     let rawTime = data?.last_spawn?.timestamp || data?.last_spawn?.time || data?.time || data?.timestamp;
     let pokemonName = data?.last_spawn?.pokemon || "--";
 
     if (!rawTime) throw new Error("No time field in API response");
 
-    // Convert seconds to ms if needed
     let ms;
     if (typeof rawTime === "number" && rawTime < 1e12) ms = rawTime * 1000;
     else ms = new Date(rawTime).getTime();
 
     nextSpawnAt = ms + SPAWN_INTERVAL_MS;
-    lastPokemon = pokemonName;
+    // Ensure next spawn is in the future
+    while (nextSpawnAt <= Date.now()) {
+      nextSpawnAt += SPAWN_INTERVAL_MS;
+    }
 
+    lastPokemon = pokemonName;
     document.getElementById("status").innerText = "Synced with PCG";
     document.getElementById("lastPokemon").innerText = "Last Pokémon: " + lastPokemon;
 
@@ -105,12 +115,10 @@ async function sync() {
 
 function tick() {
   const diff = nextSpawnAt - Date.now();
-
   if (diff <= 0) {
     document.getElementById("timer").innerText = "Spawning!";
     return;
   }
-
   const m = String(Math.floor(diff / 60000)).padStart(2, "0");
   const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
   document.getElementById("timer").innerText = `${m}:${s}`;
