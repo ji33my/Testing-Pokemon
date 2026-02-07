@@ -20,7 +20,7 @@
 </style>
 </head>
 <body>
-<div id="timer">--:--:--</div>
+<div id="timer">--:--</div>
 <div id="label">Time until next Pokémon</div>
 
 <script>
@@ -30,12 +30,10 @@ let nextSpawn = null;
 // Base fallback time: 12:04:11 AM EST today
 function getFallbackNextSpawn() {
     const now = new Date();
-    // Set base time in EST
     const baseTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
     baseTime.setHours(0, 4, 11, 0); // 12:04:11 AM
 
-    // Calculate next spawn after base time in 15 min + 3 sec increments
-    const interval = 15 * 60 * 1000 + 3000; // 15 minutes + 3 seconds in ms
+    const interval = 15 * 60 * 1000 + 3000; // 15 minutes + 3 seconds
     const elapsed = now - baseTime;
     const intervalsPassed = Math.ceil(elapsed / interval);
     return new Date(baseTime.getTime() + intervalsPassed * interval);
@@ -52,7 +50,6 @@ async function fetchNextSpawn() {
         const lastSpawn = new Date(data.last_spawn_time);
         if(isNaN(lastSpawn.getTime())) throw new Error("Invalid date format from API");
 
-        // Next spawn 5 minutes after last spawn
         nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000);
     } catch (err) {
         console.warn("API failed, using fallback:", err);
@@ -68,16 +65,14 @@ function updateTimer() {
     let diff = nextSpawn - now;
 
     if(diff <= 0) {
-        // Time's up, calculate next spawn using fallback if API fails
         fetchNextSpawn();
         diff = 0;
     }
 
-    const hours = String(Math.floor(diff / 3600000)).padStart(2, '0');
-    const minutes = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+    const minutes = String(Math.floor(diff / 60000)).padStart(2, '0');
     const seconds = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
 
-    document.getElementById("timer").textContent = `${hours}:${minutes}:${seconds}`;
+    document.getElementById("timer").textContent = `${minutes}:${seconds}`;
 }
 
 // Initialize
