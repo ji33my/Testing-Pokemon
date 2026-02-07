@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>PCG Debug – Last Spawn Time</title>
+<title>PCG Spawn Timer</title>
 <style>
   body {
     margin: 0;
@@ -20,67 +20,92 @@
     text-align: center;
     text-shadow: 2px 2px 6px black;
   }
-  #time {
-    font-size: 48px;
+  #timer {
+    font-size: 72px;
     font-weight: bold;
+    line-height: 1;
   }
   #label {
     margin-top: 8px;
     font-size: 20px;
     opacity: 0.9;
   }
+  #status {
+    margin-top: 6px;
+    font-size: 14px;
+    opacity: 0.7;
+  }
 </style>
 </head>
 <body>
   <div id="wrap">
-    <div id="time">Waiting for API…</div>
-    <div id="label">Last Pokémon spawn time</div>
+    <div id="timer">--:--</div>
+    <div id="label">Time until next Pokémon</div>
+    <div id="status">Using seeded base time (12:04:11)</div>
   </div>
 
 <script>
 const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
+const SPAWN_INTERVAL_MS = 15 * 60 * 1000;
+
+// 🔒 Seeded last spawn time (LOCAL TIME)
+function getSeededLastSpawn() {
+  const now = new Date();
+  const seeded = new Date(now);
+  seeded.setHours(12, 4, 11, 0); // 12:04:11 today
+
+  // If that time is in the future (e.g., after midnight), subtract a day
+  if (seeded.getTime() > now.getTime()) {
+    seeded.setDate(seeded.getDate() - 1);
+  }
+  return seeded.getTime();
+}
+
+let nextSpawnAt = getSeededLastSpawn() + SPAWN_INTERVAL_MS;
 
 async function sync() {
   try {
     const res = await fetch(API_URL + "&_=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
     const data = await res.json();
 
-    // Try to locate ANY time field
     let raw =
       data?.last_spawn?.time ??
       data?.time ??
       data?.timestamp ??
       data?.last_spawn?.timestamp;
 
-    if (!raw) {
-      document.getElementById("time").innerText = "No time field found";
-      console.log("API response:", data);
-      return;
-    }
+    if (!raw) throw new Error("No time field");
 
-    // Normalize seconds vs ms
     let ms = raw;
-    if (typeof raw === "number" && raw < 1e12) {
-      ms = raw * 1000;
-    } else {
-      ms = new Date(raw).getTime();
-    }
+    if (typeof raw === "number" && raw < 1e12) ms = raw * 1000;
+    else ms = new Date(raw).getTime();
 
-    const d = new Date(ms);
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    const ss = String(d.getSeconds()).padStart(2, "0");
-
-    document.getElementById("time").innerText = `${hh}:${mm}:${ss}`;
+    nextSpawnAt = ms + SPAWN_INTERVAL_MS;
+    document.getElementById("status").innerText = "Synced with PCG";
 
   } catch (e) {
-    document.getElementById("time").innerText = "API error";
-    console.log("Fetch error:", e);
+    document.getElementById("status").innerText = "PCG API offline – using seeded timer (12:04:11)";
   }
+}
+
+function tick() {
+  const diff = nextSpawnAt - Date.now();
+
+  if (diff <= 0) {
+    document.getElementById("timer").innerText = "Spawning!";
+    return;
+  }
+
+  const m = String(Math.floor(diff / 60000)).padStart(2, "0");
+  const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+  document.getElementById("timer").innerText = `${m}:${s}`;
 }
 
 sync();
 setInterval(sync, 30000);
+setInterval(tick, 1000);
 </script>
 </body>
 </html>
