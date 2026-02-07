@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>PCG Spawn Timer</title>
+<title>PCG Debug – Last Spawn Time</title>
 <style>
   body {
     margin: 0;
@@ -20,10 +20,9 @@
     text-align: center;
     text-shadow: 2px 2px 6px black;
   }
-  #timer {
-    font-size: 72px;
+  #time {
+    font-size: 48px;
     font-weight: bold;
-    line-height: 1;
   }
   #label {
     margin-top: 8px;
@@ -34,63 +33,54 @@
 </head>
 <body>
   <div id="wrap">
-    <div id="timer">Waiting for API…</div>
-    <div id="label">Time until next Pokémon</div>
+    <div id="time">Waiting for API…</div>
+    <div id="label">Last Pokémon spawn time</div>
   </div>
 
 <script>
 const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
-const SPAWN_INTERVAL_MS = 15 * 60 * 1000;
-
-let nextSpawnAt = null;
 
 async function sync() {
   try {
     const res = await fetch(API_URL + "&_=" + Date.now(), { cache: "no-store" });
     const data = await res.json();
 
-    // 🔒 Current PokéTwitch format (most reliable)
-    // last_spawn: { time: 1700000000, pokemon: { name: "Pikachu" } }
-    let lastSpawnUnix =
+    // Try to locate ANY time field
+    let raw =
       data?.last_spawn?.time ??
       data?.time ??
-      data?.timestamp;
+      data?.timestamp ??
+      data?.last_spawn?.timestamp;
 
-    if (!lastSpawnUnix) {
+    if (!raw) {
+      document.getElementById("time").innerText = "No time field found";
       console.log("API response:", data);
-      throw new Error("No usable time field found");
+      return;
     }
 
-    // If API gives seconds, convert to ms
-    if (lastSpawnUnix < 1e12) {
-      lastSpawnUnix = lastSpawnUnix * 1000;
+    // Normalize seconds vs ms
+    let ms = raw;
+    if (typeof raw === "number" && raw < 1e12) {
+      ms = raw * 1000;
+    } else {
+      ms = new Date(raw).getTime();
     }
 
-    nextSpawnAt = lastSpawnUnix + SPAWN_INTERVAL_MS;
+    const d = new Date(ms);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+
+    document.getElementById("time").innerText = `${hh}:${mm}:${ss}`;
 
   } catch (e) {
-    console.log("API sync failed:", e);
+    document.getElementById("time").innerText = "API error";
+    console.log("Fetch error:", e);
   }
-}
-
-function tick() {
-  if (!nextSpawnAt) return;
-
-  const diff = nextSpawnAt - Date.now();
-
-  if (diff <= 0) {
-    document.getElementById("timer").innerText = "Spawning!";
-    return;
-  }
-
-  const m = String(Math.floor(diff / 60000)).padStart(2, "0");
-  const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
-  document.getElementById("timer").innerText = `${m}:${s}`;
 }
 
 sync();
 setInterval(sync, 30000);
-setInterval(tick, 1000);
 </script>
 </body>
 </html>
