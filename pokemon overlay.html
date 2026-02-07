@@ -42,7 +42,7 @@ function getFallbackNextSpawn() {
     const baseTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
     baseTime.setHours(0, 4, 57, 0); // 12:04:57 AM EST
 
-    const interval = 15 * 60 * 1000 + 3000; // 15m 3s
+    const interval = 15 * 60 * 1000; // 15m 3s
     const elapsed = now - baseTime;
     const intervalsPassed = Math.ceil(elapsed / interval);
 
@@ -90,7 +90,7 @@ async function fetchNextSpawn() {
         const cached = loadCache();
         if (cached) {
             // move forward by interval to avoid sticking in the past
-            nextSpawn = new Date(cached.getTime() + (15 * 60 * 1000 + 3000));
+            nextSpawn = new Date(cached.getTime() + (15 * 60 * 1000));
             saveCache(nextSpawn);
         } else {
             nextSpawn = getFallbackNextSpawn();
@@ -131,3 +131,4 @@ function updateTimer() {
 </script>
 </body>
 </html>
+
