@@ -4,47 +4,35 @@
 <meta charset="UTF-8" />
 <title>Next Pokémon Timer</title>
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
+   body {
     background: transparent;
-    overflow: hidden;
-    font-family: Arial, Helvetica, sans-serif;
+    color: #FF0000;
+    font-family: Arial, sans-serif;
     text-align: center;
-  }
-
-  #timer {
-    font-size: 96px;
+    font-size: 48px;
     font-weight: bold;
-    color: #cc0000; /* Pokémon red */
     -webkit-text-stroke: 2px white;
-    text-shadow:
-      -1px -1px 0 #fff,
-       1px -1px 0 #fff,
-      -1px  1px 0 #fff,
-       1px  1px 0 #fff;
-    line-height: 1;
+    text-shadow: 2px 2px 0 #00000033;
   }
 
-  #label1, #label2 {
-    font-size: 36px;
+  #label {
+    font-size: 24px;
+    margin-top: 10px;
     font-weight: bold;
-    color: #cc0000;
+    color: #FF0000;
     -webkit-text-stroke: 1px white;
-    text-shadow:
-      -1px -1px 0 #fff,
-       1px -1px 0 #fff,
-      -1px  1px 0 #fff,
-       1px  1px 0 #fff;
-    line-height: 1.1;
+    text-shadow: 1px 1px 0 #00000033;
+    line-height: 1.2;
   }
 </style>
 </head>
 <body>
 
 <div id="timer">--:--</div>
-<div id="label1">Time until</div>
-<div id="label2">next Pokémon</div>
+<div id="label">
+  <div>Time until</div>
+  <div>next Pokémon</div>
+</div>
 
 <script>
 const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
@@ -147,3 +135,4 @@ setInterval(tick, 1000);
 
 </body>
 </html>
+
