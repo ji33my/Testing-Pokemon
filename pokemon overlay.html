@@ -1,134 +1,149 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Pokémon Timer</title>
+<meta charset="UTF-8" />
+<title>Next Pokémon Timer</title>
 <style>
-  body {
+  html, body {
+    margin: 0;
+    padding: 0;
     background: transparent;
-    color: #FF0000;
-    font-family: Arial, sans-serif;
+    overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
     text-align: center;
-    font-size: 48px;
-    font-weight: bold;
-    -webkit-text-stroke: 2px white;
-    text-shadow: 2px 2px 0 #00000033;
   }
-  #label {
-    font-size: 24px;
-    margin-top: 10px;
+
+  #timer {
+    font-size: 96px;
     font-weight: bold;
-    color: #FF0000;
+    color: #cc0000; /* Pokémon red */
+    -webkit-text-stroke: 2px white;
+    text-shadow:
+      -1px -1px 0 #fff,
+       1px -1px 0 #fff,
+      -1px  1px 0 #fff,
+       1px  1px 0 #fff;
+    line-height: 1;
+  }
+
+  #label1, #label2 {
+    font-size: 36px;
+    font-weight: bold;
+    color: #cc0000;
     -webkit-text-stroke: 1px white;
-    text-shadow: 1px 1px 0 #00000033;
-    line-height: 1.2;
+    text-shadow:
+      -1px -1px 0 #fff,
+       1px -1px 0 #fff,
+      -1px  1px 0 #fff,
+       1px  1px 0 #fff;
+    line-height: 1.1;
   }
 </style>
 </head>
 <body>
+
 <div id="timer">--:--</div>
-<div id="label">
-  <div>Time until</div>
-  <div>next Pokémon</div>
-</div>
+<div id="label1">Time until</div>
+<div id="label2">next Pokémon</div>
 
 <script>
-const apiUrl = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
-let nextSpawn = null;
+const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
+const INTERVAL_MS = 15 * 60 * 1000; // 15 minutes flat
+const BASE_UTC = Date.UTC(2026, 1, 7, 5, 4, 57); // fallback base
 
-// Fallback base: 12:04:57 AM EST + (15 min 3 sec intervals)
-function getFallbackNextSpawn() {
-    const now = new Date();
-    const baseTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    baseTime.setHours(0, 4, 57, 0); // 12:04:57 AM EST
+let nextSpawnTime = null;
 
-    const interval = 15 * 60 * 1000; // 15m 3s
-    const elapsed = now - baseTime;
-    const intervalsPassed = Math.ceil(elapsed / interval);
-
-    return new Date(baseTime.getTime() + intervalsPassed * interval);
-}
-
-function saveCache(date) {
-    try {
-        localStorage.setItem("cachedNextSpawn", date.toISOString());
-    } catch (e) {
-        console.warn("localStorage save failed:", e);
-    }
-}
-
+// Load cached next spawn
 function loadCache() {
-    try {
-        const saved = localStorage.getItem("cachedNextSpawn");
-        if (saved) {
-            const d = new Date(saved);
-            if (!isNaN(d.getTime())) return d;
-        }
-    } catch (e) {
-        console.warn("localStorage load failed:", e);
-    }
-    return null;
+  const cached = localStorage.getItem("nextSpawnTime");
+  if (cached) {
+    nextSpawnTime = parseInt(cached, 10);
+  }
 }
 
-// Fetch next spawn from API, cache result
-async function fetchNextSpawn() {
-    try {
-        const response = await fetch(apiUrl, { cache: "no-store" });
-        const data = await response.json();
-
-        if (!data.last_spawn_time) throw new Error("Missing last_spawn_time");
-
-        const lastSpawn = new Date(data.last_spawn_time);
-        if (isNaN(lastSpawn.getTime())) throw new Error("Invalid date");
-
-        nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000);
-        saveCache(nextSpawn);
-
-    } catch (err) {
-        console.warn("API failed:", err);
-
-        const cached = loadCache();
-        if (cached) {
-            // move forward by interval to avoid sticking in the past
-            nextSpawn = new Date(cached.getTime() + (15 * 60 * 1000));
-            saveCache(nextSpawn);
-        } else {
-            nextSpawn = getFallbackNextSpawn();
-            saveCache(nextSpawn);
-        }
-    }
+// Save cache
+function saveCache() {
+  if (nextSpawnTime) {
+    localStorage.setItem("nextSpawnTime", nextSpawnTime.toString());
+  }
 }
 
-// Update timer every second
-function updateTimer() {
-    if (!nextSpawn) return;
+// Generate next spawn from base
+function generateFromBase(now) {
+  let t = BASE_UTC;
+  while (t <= now) {
+    t += INTERVAL_MS;
+  }
+  return t;
+}
 
-    const now = new Date();
-    let diff = nextSpawn - now;
+// Fetch API
+async function fetchFromAPI() {
+  try {
+    const res = await fetch(API_URL, { cache: "no-store" });
+    const data = await res.json();
+    const lastSpawn = new Date(data.event_time).getTime();
+    const next = lastSpawn + INTERVAL_MS;
 
-    if (diff <= 0) {
-        fetchNextSpawn(); // Always hit API when timer ends
-        diff = 0;
+    if (!isNaN(next)) {
+      nextSpawnTime = next;
+      saveCache();
+      return true;
     }
+  } catch (e) {
+    console.warn("API fetch failed:", e);
+  }
+  return false;
+}
 
-    const minutes = String(Math.floor(diff / 60000)).padStart(2, '0');
-    const seconds = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+function formatMMSS(ms) {
+  ms = Math.max(0, ms);
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
 
-    document.getElementById("timer").textContent = `${minutes}:${seconds}`;
+async function ensureNextSpawn() {
+  const now = Date.now();
+
+  // 1️⃣ Try API first
+  const apiOk = await fetchFromAPI();
+  if (apiOk) return;
+
+  // 2️⃣ Use cache if valid
+  if (nextSpawnTime && nextSpawnTime > now) return;
+
+  // 3️⃣ Advance stale cache
+  if (nextSpawnTime && nextSpawnTime <= now) {
+    while (nextSpawnTime <= now) {
+      nextSpawnTime += INTERVAL_MS;
+    }
+    saveCache();
+    return;
+  }
+
+  // 4️⃣ Fallback to base
+  nextSpawnTime = generateFromBase(now);
+  saveCache();
+}
+
+async function tick() {
+  const now = Date.now();
+
+  if (!nextSpawnTime || now >= nextSpawnTime) {
+    await ensureNextSpawn();
+  }
+
+  const remaining = nextSpawnTime - now;
+  document.getElementById("timer").textContent = formatMMSS(remaining);
 }
 
 // Init
-(async function () {
-    const cached = loadCache();
-    if (cached) nextSpawn = cached;
-
-    if (!nextSpawn) {
-        await fetchNextSpawn();
-    }
-
-    setInterval(updateTimer, 1000);
-})();
+loadCache();
+ensureNextSpawn();
+setInterval(tick, 1000);
 </script>
+
 </body>
 </html>
-
