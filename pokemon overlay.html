@@ -6,13 +6,13 @@
 <style>
   body {
     background: transparent;
-    color: #FF0000; /* Pokémon Red */
+    color: #FF0000;
     font-family: Arial, sans-serif;
     text-align: center;
     font-size: 48px;
-    font-weight: bold; /* bold text */
-    -webkit-text-stroke: 2px white; /* white outline for timer */
-    text-shadow: 2px 2px 0 #00000033; /* subtle shadow for depth */
+    font-weight: bold;
+    -webkit-text-stroke: 2px white;
+    text-shadow: 2px 2px 0 #00000033;
   }
   #label {
     font-size: 24px;
@@ -21,7 +21,7 @@
     color: #FF0000;
     -webkit-text-stroke: 1px white;
     text-shadow: 1px 1px 0 #00000033;
-    line-height: 1.2; /* slightly tighter line spacing */
+    line-height: 1.2;
   }
 </style>
 </head>
@@ -35,46 +35,59 @@
 <script>
 const apiUrl = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
 let nextSpawn = null;
+let cachedNextSpawn = null;
 
-// Base fallback time: 12:04:57 AM EST today
+// Fallback base: 12:04:57 AM EST + (15 min 3 sec intervals)
 function getFallbackNextSpawn() {
     const now = new Date();
-    const baseTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
-    baseTime.setHours(0, 4, 57, 0); // 12:04:57 AM
+    const baseTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    baseTime.setHours(0, 4, 57, 0); // 12:04:57 AM EST
 
-    const interval = 15 * 60 * 1000 + 3000; // 15 minutes + 3 seconds
+    const interval = 15 * 60 * 1000 + 3000; // 15m 3s
     const elapsed = now - baseTime;
     const intervalsPassed = Math.ceil(elapsed / interval);
+
     return new Date(baseTime.getTime() + intervalsPassed * interval);
 }
 
-// Fetch last spawn from API or fallback
+// Fetch next spawn from API, cache result
 async function fetchNextSpawn() {
     try {
-        const response = await fetch(apiUrl);
+        const response = await fetch(apiUrl, { cache: "no-store" });
         const data = await response.json();
 
-        if(!data.last_spawn_time) throw new Error("No last spawn time from API");
+        if (!data.last_spawn_time) throw new Error("Missing last_spawn_time");
 
         const lastSpawn = new Date(data.last_spawn_time);
-        if(isNaN(lastSpawn.getTime())) throw new Error("Invalid date format from API");
+        if (isNaN(lastSpawn.getTime())) throw new Error("Invalid date");
 
-        nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000);
+        nextSpawn = new Date(lastSpawn.getTime() + 5 * 60 * 1000); // API-based next spawn
+        cachedNextSpawn = new Date(nextSpawn); // cache good value
+
     } catch (err) {
-        console.warn("API failed, using fallback:", err);
-        nextSpawn = getFallbackNextSpawn();
+        console.warn("API failed:", err);
+
+        if (cachedNextSpawn) {
+            // Use last known good value + normal interval
+            nextSpawn = new Date(cachedNextSpawn.getTime() + (15 * 60 * 1000 + 3000));
+            cachedNextSpawn = new Date(nextSpawn);
+        } else {
+            // No cache yet → fallback base schedule
+            nextSpawn = getFallbackNextSpawn();
+            cachedNextSpawn = new Date(nextSpawn);
+        }
     }
 }
 
 // Update timer every second
 function updateTimer() {
-    if(!nextSpawn) return;
+    if (!nextSpawn) return;
 
     const now = new Date();
     let diff = nextSpawn - now;
 
-    if(diff <= 0) {
-        fetchNextSpawn();
+    if (diff <= 0) {
+        fetchNextSpawn(); // Always hit API when timer ends
         diff = 0;
     }
 
@@ -84,8 +97,8 @@ function updateTimer() {
     document.getElementById("timer").textContent = `${minutes}:${seconds}`;
 }
 
-// Initialize
-(async function() {
+// Init
+(async function () {
     await fetchNextSpawn();
     setInterval(updateTimer, 1000);
 })();
