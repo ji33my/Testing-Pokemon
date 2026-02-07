@@ -21,12 +21,16 @@
     color: #FF0000;
     -webkit-text-stroke: 1px white;
     text-shadow: 1px 1px 0 #00000033;
+    line-height: 1.2; /* slightly tighter line spacing */
   }
 </style>
 </head>
 <body>
 <div id="timer">--:--</div>
-<div id="label">Time until next Pokémon</div>
+<div id="label">
+  <div>Time until</div>
+  <div>next Pokémon</div>
+</div>
 
 <script>
 const apiUrl = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
