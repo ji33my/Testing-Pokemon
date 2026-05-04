@@ -50,9 +50,15 @@
   <script>
     const API_URL = "https://poketwitch.bframework.de/info/events/last_spawn/?t=1";
     const INTERVAL_MS = 15 * 60 * 1000; // 15 minutes flat
-    const CACHE_KEY = "cachedNextSpawnTime";
+    const CACHE_NEXT_KEY = "cachedNextSpawnTime";
+    const CACHE_FETCH_KEY = "cachedApiFetchTime";
+    const CACHE_ATTEMPT_KEY = "cachedApiAttemptTime";
+    // Confirmed real spawn time — used as anchor when everything else fails
+    const SEED_SPAWN_TIME = new Date("2026-05-04T00:20:12.146Z").getTime();
+    const TIMER_ELEMENT = document.getElementById("timer");
 
-    let nextSpawnTime = null;
+    let nextSpawnTime = NaN;
+    let isFetching = false;
 
     function formatMMSS(ms) {
       if (ms < 0) ms = 0;
@@ -62,42 +68,110 @@
       return `${minutes}:${seconds}`;
     }
 
-    async function fetchNextSpawn() {
-      try {
-        const res = await fetch(API_URL, { cache: "no-store" });
-        const data = await res.json();
+    function isValidTimestamp(value) {
+      return typeof value === "number" && Number.isFinite(value) && value > 0;
+    }
 
+    function setTimerText(text) {
+      TIMER_ELEMENT.textContent = text;
+    }
+
+    function getFallbackFromBaseTime(baseTime) {
+      if (!isValidTimestamp(baseTime)) return NaN;
+      const now = Date.now();
+      const elapsed = now - baseTime;
+      const cycles = Math.max(1, Math.ceil(elapsed / INTERVAL_MS));
+      return baseTime + cycles * INTERVAL_MS;
+    }
+
+    async function fetchNextSpawn() {
+      if (isFetching) return;
+      isFetching = true;
+      const attemptTime = Date.now();
+      localStorage.setItem(CACHE_ATTEMPT_KEY, String(attemptTime));
+
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const res = await fetch(API_URL, { cache: "no-store", signal: controller.signal });
+        const data = await res.json();
+        clearTimeout(fetchTimeout);
+
+        const nextSpawnSeconds = Number(data.next_spawn);
         const lastSpawn = new Date(data.event_time).getTime();
-        const computedNext = lastSpawn + INTERVAL_MS;
+        let computedNext = NaN;
+
+        if (Number.isFinite(nextSpawnSeconds) && nextSpawnSeconds >= 0) {
+          computedNext = attemptTime + nextSpawnSeconds * 1000;
+        } else if (isValidTimestamp(lastSpawn)) {
+          computedNext = lastSpawn + INTERVAL_MS;
+        }
+
+        if (!isValidTimestamp(computedNext)) {
+          throw new Error("Invalid API timing data");
+        }
 
         nextSpawnTime = computedNext;
-        localStorage.setItem(CACHE_KEY, String(computedNext));
-
+        localStorage.setItem(CACHE_NEXT_KEY, String(computedNext));
+        localStorage.setItem(CACHE_FETCH_KEY, String(attemptTime));
         console.log("API OK → Next spawn:", new Date(computedNext).toLocaleString());
       } catch (err) {
         console.warn("API failed, using cache...", err);
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          nextSpawnTime = parseInt(cached, 10);
-          console.log("Loaded cached next spawn:", new Date(nextSpawnTime).toLocaleString());
+
+        const cachedNext = localStorage.getItem(CACHE_NEXT_KEY);
+        const cachedFetch = localStorage.getItem(CACHE_FETCH_KEY);
+        const cachedAttempt = localStorage.getItem(CACHE_ATTEMPT_KEY);
+        const cachedNextTime = cachedNext ? Number(cachedNext) : NaN;
+        const cachedFetchTime = cachedFetch ? Number(cachedFetch) : NaN;
+        const cachedAttemptTime = cachedAttempt ? Number(cachedAttempt) : NaN;
+
+        if (isValidTimestamp(cachedNextTime) && cachedNextTime > Date.now()) {
+          nextSpawnTime = cachedNextTime;
+          console.log("Loaded valid cached next spawn:", new Date(nextSpawnTime).toLocaleString());
+        } else if (isValidTimestamp(cachedFetchTime)) {
+          nextSpawnTime = getFallbackFromBaseTime(cachedFetchTime);
+          console.log("Fallback computed from last successful API pull:", new Date(nextSpawnTime).toLocaleString());
+        } else if (isValidTimestamp(cachedAttemptTime)) {
+          nextSpawnTime = getFallbackFromBaseTime(cachedAttemptTime);
+          console.log("Worst-case fallback from last API attempt:", new Date(nextSpawnTime).toLocaleString());
+        } else {
+          nextSpawnTime = getFallbackFromBaseTime(SEED_SPAWN_TIME);
+          console.log("Seed fallback from known spawn anchor:", new Date(nextSpawnTime).toLocaleString());
         }
+      } finally {
+        isFetching = false;
       }
     }
 
     function updateTimer() {
-      if (!nextSpawnTime) return;
+      if (!isValidTimestamp(nextSpawnTime)) {
+        setTimerText("--:--");
+        return;
+      }
 
       const now = Date.now();
       const remaining = nextSpawnTime - now;
 
-      document.getElementById("timer").textContent = formatMMSS(remaining);
-
       if (remaining <= 0) {
+        setTimerText("00:00");
         fetchNextSpawn();
+        return;
       }
+
+      setTimerText(formatMMSS(remaining));
     }
 
-    fetchNextSpawn();
+    // Always set a valid nextSpawnTime before the first fetch resolves
+    const cachedInit = localStorage.getItem(CACHE_NEXT_KEY);
+    const cachedInitTime = cachedInit ? Number(cachedInit) : NaN;
+    if (isValidTimestamp(cachedInitTime) && cachedInitTime > Date.now()) {
+      nextSpawnTime = cachedInitTime;
+    } else {
+      nextSpawnTime = getFallbackFromBaseTime(SEED_SPAWN_TIME);
+    }
+
+    fetchNextSpawn().then(updateTimer);
     setInterval(updateTimer, 250);
   </script>
 </body>
